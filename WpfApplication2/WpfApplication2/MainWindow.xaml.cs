@@ -20,22 +20,15 @@ using System.ServiceModel.Channels;
 
 namespace WpfApplication2
 { 
-    public partial class MainWindow : Window, IMessageListener
-    {
-        private ServiceHost _RouterHost;
-        private Uri service1Uri = new Uri("http://localhost/ServiceA/Service1.svc");
-        private Uri service2Uri = new Uri("http://localhost/ServiceA/Service2.svc");
+    public partial class MainWindow : Window
+    { 
         private Uri routerUri = new Uri("http://localhost/routingservice/router");
-        //private string Action = "http://tempuri.org/IService1/MyMethod";
         public ObservableCollection<MessageContainer> Messages { get; set; }
         private Dictionary<Uri, IRequestChannel> _Clients = new Dictionary<Uri, IRequestChannel>();
 
         private WSHttpBinding CreateBinding()
         {
-            WSHttpBinding binding = new WSHttpBinding();
-            binding.Security.Mode = SecurityMode.None;
-            binding.ReliableSession.Enabled = false;
-            return binding;
+            return new WSHttpBinding("default");
         }
 
         public MainWindow()
@@ -48,15 +41,7 @@ namespace WpfApplication2
             channel.BeginAcceptChannel(AcceptChannel, channel);
 
             Messages = new ObservableCollection<MessageContainer>();
-            lbxMessages.ItemsSource = Messages; 
-
-            //add endpoint for routing service
-
-            //ServiceHost host = new ServiceHost(typeof(RoutingService), new Uri[] {});
-            //host.Description.Behaviors.Add(new MyBehavior(this));
- 
-            //host.Open();
-            //_RouterHost = host; 
+            lbxMessages.ItemsSource = Messages;   
         }
 
         public void AcceptChannel(IAsyncResult ar)
@@ -70,14 +55,21 @@ namespace WpfApplication2
         public void AcceptRequest(IAsyncResult ar)
         {
             IReplyChannel channel = ar.AsyncState as IReplyChannel;
-            RequestContext context = channel.EndReceiveRequest(ar);
-            channel.BeginReceiveRequest(AcceptRequest, channel);
-            ProcessRequest(context);
+            try
+            { 
+                RequestContext context = channel.EndReceiveRequest(ar);
+                channel.BeginReceiveRequest(AcceptRequest, channel);
+                ProcessRequest(context);
+            }
+            catch (TimeoutException)
+            {
+                channel.BeginReceiveRequest(AcceptRequest, channel);
+            }     
         }
 
         public void ProcessRequest(RequestContext context)
         { 
-            MessageHeaders headers = context.RequestMessage.Headers;
+            MessageHeaders headers = context.RequestMessage.Headers;            
 
             //create new request channel if needed
             IRequestChannel requestChannel = null;
@@ -90,150 +82,69 @@ namespace WpfApplication2
                 requestChannel = factory.CreateChannel(new EndpointAddress(headers.To));
                 requestChannel.Open();
                 _Clients.Add(headers.To, requestChannel);
-            }
+            } 
 
+            //forward request and send back response
+            MessageContainer container = new MessageContainer();
+            Message incoming = CopyMessage(context.RequestMessage, container, MessageDirection.Incoming);
 
-            Message incoming = CopyMessage(context.RequestMessage, MessageDirection.Incoming);
-            MessageVersion version = context.RequestMessage.Version;
-            string action = headers.Action;
-            Message requestMessage = Message.CreateMessage(context.RequestMessage.Version, headers.Action, incoming.GetReaderAtBodyContents());
+            //add request to gui
+            Action<int, MessageContainer> msg = new Action<int, MessageContainer>(Messages.Insert);
+            this.Dispatcher.Invoke(msg, new object[] { 0, container });
 
-            Message responseMessage = requestChannel.Request(requestMessage);
-            Message outgoing = CopyMessage(responseMessage, MessageDirection.Outgoing);
+            //get response
+            Message responseMessage = requestChannel.Request(incoming);
+            Message outgoing = CopyMessage(responseMessage, container, MessageDirection.Outgoing);
             context.Reply(outgoing);
         }
 
-        public Message CopyMessage(Message message, MessageDirection direction)
+        public Message CopyMessage(Message message, MessageContainer container, MessageDirection direction)
         {
             MessageBuffer buffer = message.CreateBufferedCopy(Int32.MaxValue);
 
-            MessageContainer container = new MessageContainer();
-            container.Message = buffer.CreateMessage();
-            container.MessageText = buffer.CreateMessage().ToString();
-            container.Received = DateTime.Now;
-            container.IsIncoming = (direction == MessageDirection.Incoming);
-           
-            Action<MessageContainer> msg = new Action<MessageContainer>(Messages.Add);
-            this.Dispatcher.Invoke(msg, container);
+            if (direction == MessageDirection.Incoming)
+            {
+                container.RequestMessageText = buffer.CreateMessage().ToString();
+                container.RequestReceived = DateTime.Now;
+                if (message.Properties.ContainsKey(RemoteEndpointMessageProperty.Name))
+                {
+                    RemoteEndpointMessageProperty property = (RemoteEndpointMessageProperty)message.Properties[RemoteEndpointMessageProperty.Name];
+                    container.RemoteAddress = property.Address;
+                }
+                if (message.Headers.To != null)
+                {
+                    container.ToAddress = message.Headers.To.ToString();
+                }
+                container.RequestAction = message.Headers.Action;
+            } 
+            else if(direction == MessageDirection.Outgoing)
+            {
+                container.ResponseMessageText = buffer.CreateMessage().ToString();
+                container.ResponseReceived = DateTime.Now;
+                container.ResponseAction = message.Headers.Action;
+            }
             return buffer.CreateMessage();
-        }
-
-
-        public void MessageRecieved(Message message, MessageDirection direction)
-        { 
-            MessageContainer container = new MessageContainer();
-            container.Message = message.CreateBufferedCopy(Int32.MaxValue).CreateMessage();
-            container.MessageText = message.ToString();
-            container.Received = DateTime.Now;
-            container.IsIncoming = (direction == MessageDirection.Incoming);
-           
-            Action<MessageContainer> msg = new Action<MessageContainer>(Messages.Add);
-            this.Dispatcher.Invoke(msg, container);
-        }
+        } 
     }
-
-    [ServiceContract]
-    public class SomeService
-    {
-        [OperationContract]
-        public void DoSomething()
-        {
-            
-        }
-    }
-
+ 
     public class MessageContainer
     {
-        public DateTime Received { get; set; }
-        public Message Message { get; set; }
-        public string MessageText { get; set; }
-        public bool IsIncoming { get; set; }
+        public DateTime RequestReceived { get; set; }
+        public DateTime ResponseReceived { get; set; }
+        public Message RequestMessage { get; set; }
+        public Message ResponseMessage { get; set; }
+        public string RequestMessageText { get; set; }
+        public string ResponseMessageText { get; set; }
+        public string RequestAction { get; set; }
+        public string ResponseAction { get; set; }
+        public string RemoteAddress { get; set; }
+        public string ToAddress { get; set; }
+        public long TotalLength { get { return RequestMessageText.Length + ResponseMessageText.Length; } }
+        public double Duration { get { return (ResponseReceived - RequestReceived).TotalMilliseconds; } }
     }
-
-    public interface IMessageListener
-    {
-        void MessageRecieved(Message message, MessageDirection direction);
-    }
-
+ 
     public enum MessageDirection
     {
-        Incoming,
-        Outgoing
-    }
-    public class MyBehavior :IServiceBehavior, IEndpointBehavior
-    {
-        private readonly IMessageListener _MessageListener;
-        public MyBehavior(IMessageListener messageListener)
-        {
-            _MessageListener = messageListener;
-        }
-
-        #region IServiceBehavior
-         
-        public void AddBindingParameters(ServiceDescription serviceDescription, ServiceHostBase serviceHostBase, Collection<ServiceEndpoint> endpoints, System.ServiceModel.Channels.BindingParameterCollection bindingParameters)
-        { 
-            // Do Nothing
-        }
-        public void Validate(ServiceDescription serviceDescription, ServiceHostBase serviceHostBase)
-        {
-            // Do Nothing
-        }
-
-        public void ApplyDispatchBehavior(ServiceDescription serviceDescription, ServiceHostBase serviceHostBase)
-        {
-            foreach (ServiceEndpoint endpoint in serviceDescription.Endpoints)
-            {
-                endpoint.Behaviors.Add(this);
-            }
-        }
-
-        #endregion
-
-        #region IEndpointBehavior
-
-        public void AddBindingParameters(ServiceEndpoint endpoint, System.ServiceModel.Channels.BindingParameterCollection bindingParameters)
-        { 
-            // Do nothing
-        }
-        public void Validate(ServiceEndpoint endpoint)
-        {
-            // Do nothing
-        }
-        public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime)
-        {
-            throw new NotImplementedException();
-        }
-        public void ApplyDispatchBehavior(ServiceEndpoint endpoint, EndpointDispatcher endpointDispatcher)
-        {
-            endpointDispatcher.AddressFilter = new MatchAllMessageFilter();
-            endpointDispatcher.DispatchRuntime.MessageInspectors.Add(new MyMessageInspector(_MessageListener));
-        }
-
-        #endregion
-
-    }
-
-    public class MyMessageInspector : IDispatchMessageInspector
-    {
-        private readonly IMessageListener _MessageListener;
-        public MyMessageInspector(IMessageListener messageListener)
-        {
-            _MessageListener = messageListener;
-        }
-
-        public object AfterReceiveRequest(ref Message request, IClientChannel channel, InstanceContext instanceContext)
-        {
-            MessageBuffer buffer = request.CreateBufferedCopy(Int32.MaxValue);
-            _MessageListener.MessageRecieved(buffer.CreateMessage(), MessageDirection.Incoming);
-            request = buffer.CreateMessage();
-            return null;
-        }
-
-        public void BeforeSendReply(ref Message reply, object correlationState)
-        {
-            MessageBuffer buffer = reply.CreateBufferedCopy(Int32.MaxValue);
-            _MessageListener.MessageRecieved(buffer.CreateMessage(), MessageDirection.Outgoing);
-            reply = buffer.CreateMessage();
-        }
-    }
+        Incoming, Outgoing
+    } 
 }

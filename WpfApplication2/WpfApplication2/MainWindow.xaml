@@ -14,13 +14,67 @@
             <ListBox x:Name="lbxMessages" Grid.Column="0" ItemsSource="{Binding ElementName=ThisWindow, Path=Messages}" >
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock  Text="{Binding Path=Received}" />
+                        <TextBlock  Text="{Binding Path=RequestReceived, StringFormat='MM/dd/yy HH:mm:ss:ffff'}" />
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
             <GridSplitter Grid.Column="1" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Background="Gray"/>
-            <TextBox Grid.Column="2" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"
-                     Text="{Binding ElementName=lbxMessages, Path=SelectedItem.MessageText}" />
+            <DockPanel Grid.Column="2" DataContext="{Binding ElementName=lbxMessages, Path=SelectedItem}">
+                <Grid DockPanel.Dock="Top" HorizontalAlignment="Left">
+                    <Grid.Resources>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Margin" Value="3" />
+                        </Style>
+                    </Grid.Resources>
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>  
+ 
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Remote Address: " />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Path=RemoteAddress}" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="To Address: " />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Path=ToAddress}" />
+                    
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Request Action: " />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Path=RequestAction}" />
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Response Action: " />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding Path=ResponseAction}" />
+                    
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Request Length Bytes: " />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Path=RequestMessageText.Length}" />
+                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Response Length Bytes: " />
+                    <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding Path=ResponseMessageText.Length}" />
+                    <TextBlock Grid.Row="3" Grid.Column="4" Text="Total Length: " />
+                    <TextBlock Grid.Row="3" Grid.Column="5" Text="{Binding Path=TotalLength}" />
+                    
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Recieved: " />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Path=RequestReceived, StringFormat='MM/dd/yy HH:mm:ss:ffff'}" />
+                    <TextBlock Grid.Row="4" Grid.Column="2" Text="Response: " />
+                    <TextBlock Grid.Row="4" Grid.Column="3" Text="{Binding Path=ResponseReceived, StringFormat='MM/dd/yy HH:mm:ss:ffff'}" />
+                    <TextBlock Grid.Row="4" Grid.Column="4" Text="Duration: " />
+                    <TextBlock Grid.Row="4" Grid.Column="5" Text="{Binding Path=Duration}" />
+                </Grid>
+                <TabControl>
+                    <TabItem Header="Request">
+                        <TextBox TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding Path=RequestMessageText}" />
+                    </TabItem>
+                    <TabItem Header="Response">
+                        <TextBox TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" Text="{Binding Path=ResponseMessageText}" />
+                    </TabItem>
+                </TabControl>                
+            </DockPanel>
         </Grid>
     </Grid>
 </Window>
