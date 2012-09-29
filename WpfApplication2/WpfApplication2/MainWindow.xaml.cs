@@ -25,6 +25,8 @@ namespace WpfApplication2
         private Uri routerUri = new Uri("http://localhost/routingservice/router");
         public ObservableCollection<MessageContainer> Messages { get; set; }
         private Dictionary<Uri, IRequestChannel> _Clients = new Dictionary<Uri, IRequestChannel>();
+        private DateTime _LastReceived;
+        private int _Group;
 
         private WSHttpBinding CreateBinding()
         {
@@ -87,6 +89,13 @@ namespace WpfApplication2
             //forward request and send back response
             MessageContainer container = new MessageContainer();
             Message incoming = CopyMessage(context.RequestMessage, container, MessageDirection.Incoming);
+            if ((DateTime.Now - _LastReceived).TotalMilliseconds > 1750)
+            {
+                _Group += 1;
+            }
+            container.Group = _Group;
+            _LastReceived = DateTime.Now;
+            
 
             //add request to gui
             Action<int, MessageContainer> msg = new Action<int, MessageContainer>(Messages.Insert);
@@ -139,6 +148,7 @@ namespace WpfApplication2
         public string ResponseAction { get; set; }
         public string RemoteAddress { get; set; }
         public string ToAddress { get; set; }
+        public int Group { get; set; }
         public long TotalLength { get { return RequestMessageText.Length + ResponseMessageText.Length; } }
         public double Duration { get { return (ResponseReceived - RequestReceived).TotalMilliseconds; } }
     }

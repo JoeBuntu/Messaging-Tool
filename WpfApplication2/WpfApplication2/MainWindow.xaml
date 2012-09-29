@@ -14,7 +14,10 @@
             <ListBox x:Name="lbxMessages" Grid.Column="0" ItemsSource="{Binding ElementName=ThisWindow, Path=Messages}" >
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <TextBlock  Text="{Binding Path=RequestReceived, StringFormat='MM/dd/yy HH:mm:ss:ffff'}" />
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding Path=Group}" Margin="0,0,10,0" />
+                            <TextBlock  Text="{Binding Path=RequestReceived, StringFormat='MM/dd/yy HH:mm:ss:ffff'}" />
+                        </StackPanel>                        
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
