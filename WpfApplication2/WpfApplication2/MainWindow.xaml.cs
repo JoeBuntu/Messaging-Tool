@@ -28,6 +28,7 @@ namespace WpfApplication2
         private Uri routerUri = new Uri("http://localhost/routingservice/router");
         //private string Action = "http://tempuri.org/IService1/MyMethod";
         public ObservableCollection<MessageContainer> Messages { get; set; }
+        private Dictionary<Uri, IRequestChannel> _Clients = new Dictionary<Uri, IRequestChannel>();
 
         private WSHttpBinding CreateBinding()
         {
@@ -41,17 +42,82 @@ namespace WpfApplication2
         {
             InitializeComponent();
 
+            WSHttpBinding binding = CreateBinding();             
+            IChannelListener<IReplyChannel> channel = binding.BuildChannelListener<IReplyChannel>(routerUri, new BindingParameterCollection());
+            channel.Open();
+            channel.BeginAcceptChannel(AcceptChannel, channel);
+
             Messages = new ObservableCollection<MessageContainer>();
             lbxMessages.ItemsSource = Messages; 
 
             //add endpoint for routing service
 
-            ServiceHost host = new ServiceHost(typeof(RoutingService), new Uri[] {});
-            host.Description.Behaviors.Add(new MyBehavior(this));
+            //ServiceHost host = new ServiceHost(typeof(RoutingService), new Uri[] {});
+            //host.Description.Behaviors.Add(new MyBehavior(this));
  
-            host.Open();
-            _RouterHost = host; 
+            //host.Open();
+            //_RouterHost = host; 
         }
+
+        public void AcceptChannel(IAsyncResult ar)
+        {
+            IChannelListener<IReplyChannel> listener = ar.AsyncState as IChannelListener<IReplyChannel>;
+            IReplyChannel channel = listener.EndAcceptChannel(ar);
+            channel.Open();
+            channel.BeginReceiveRequest(AcceptRequest, channel);
+        }
+
+        public void AcceptRequest(IAsyncResult ar)
+        {
+            IReplyChannel channel = ar.AsyncState as IReplyChannel;
+            RequestContext context = channel.EndReceiveRequest(ar);
+            channel.BeginReceiveRequest(AcceptRequest, channel);
+            ProcessRequest(context);
+        }
+
+        public void ProcessRequest(RequestContext context)
+        { 
+            MessageHeaders headers = context.RequestMessage.Headers;
+
+            //create new request channel if needed
+            IRequestChannel requestChannel = null;
+            if (!_Clients.TryGetValue(headers.To, out requestChannel))
+            {
+                WSHttpBinding binding = CreateBinding();
+                IChannelFactory<IRequestChannel> factory = binding.BuildChannelFactory<IRequestChannel>(new BindingParameterCollection());
+                factory.Open();
+
+                requestChannel = factory.CreateChannel(new EndpointAddress(headers.To));
+                requestChannel.Open();
+                _Clients.Add(headers.To, requestChannel);
+            }
+
+
+            Message incoming = CopyMessage(context.RequestMessage, MessageDirection.Incoming);
+            MessageVersion version = context.RequestMessage.Version;
+            string action = headers.Action;
+            Message requestMessage = Message.CreateMessage(context.RequestMessage.Version, headers.Action, incoming.GetReaderAtBodyContents());
+
+            Message responseMessage = requestChannel.Request(requestMessage);
+            Message outgoing = CopyMessage(responseMessage, MessageDirection.Outgoing);
+            context.Reply(outgoing);
+        }
+
+        public Message CopyMessage(Message message, MessageDirection direction)
+        {
+            MessageBuffer buffer = message.CreateBufferedCopy(Int32.MaxValue);
+
+            MessageContainer container = new MessageContainer();
+            container.Message = buffer.CreateMessage();
+            container.MessageText = buffer.CreateMessage().ToString();
+            container.Received = DateTime.Now;
+            container.IsIncoming = (direction == MessageDirection.Incoming);
+           
+            Action<MessageContainer> msg = new Action<MessageContainer>(Messages.Add);
+            this.Dispatcher.Invoke(msg, container);
+            return buffer.CreateMessage();
+        }
+
 
         public void MessageRecieved(Message message, MessageDirection direction)
         { 
@@ -63,6 +129,16 @@ namespace WpfApplication2
            
             Action<MessageContainer> msg = new Action<MessageContainer>(Messages.Add);
             this.Dispatcher.Invoke(msg, container);
+        }
+    }
+
+    [ServiceContract]
+    public class SomeService
+    {
+        [OperationContract]
+        public void DoSomething()
+        {
+            
         }
     }
 
@@ -129,6 +205,7 @@ namespace WpfApplication2
         }
         public void ApplyDispatchBehavior(ServiceEndpoint endpoint, EndpointDispatcher endpointDispatcher)
         {
+            endpointDispatcher.AddressFilter = new MatchAllMessageFilter();
             endpointDispatcher.DispatchRuntime.MessageInspectors.Add(new MyMessageInspector(_MessageListener));
         }
 
