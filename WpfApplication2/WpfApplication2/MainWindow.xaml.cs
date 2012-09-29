@@ -23,7 +23,8 @@ namespace WpfApplication2
     public partial class MainWindow : Window, IMessageListener
     {
         private ServiceHost _RouterHost;
-        private Uri clientUri = new Uri("http://localhost/ServiceA/Service1.svc");
+        private Uri service1Uri = new Uri("http://localhost/ServiceA/Service1.svc");
+        private Uri service2Uri = new Uri("http://localhost/ServiceA/Service2.svc");
         private Uri routerUri = new Uri("http://localhost/routingservice/router");
         //private string Action = "http://tempuri.org/IService1/MyMethod";
         public ObservableCollection<MessageContainer> Messages { get; set; }
@@ -41,27 +42,13 @@ namespace WpfApplication2
             InitializeComponent();
 
             Messages = new ObservableCollection<MessageContainer>();
-            lbxMessages.ItemsSource = Messages;
-
-            System.ServiceModel.Channels.Binding clientBinding = CreateBinding();
-            System.ServiceModel.Channels.Binding routerBinding = CreateBinding();
+            lbxMessages.ItemsSource = Messages; 
 
             //add endpoint for routing service
-            ServiceHost host = new ServiceHost(typeof(RoutingService), routerUri);
-            
-            host.AddServiceEndpoint(typeof(IRequestReplyRouter), routerBinding, routerUri);
 
-            //create client endpoint to route messages to
-            ContractDescription contract = ContractDescription.GetContract(typeof(IRequestReplyRouter));
-            ServiceEndpoint client = new ServiceEndpoint(contract, clientBinding, new EndpointAddress(clientUri));
-
-            //create a new routing configuration object
-            ServiceEndpoint[] endpointList = new ServiceEndpoint[] { client };
-            RoutingConfiguration rc = new RoutingConfiguration();
-            rc.FilterTable.Add(new MatchAllMessageFilter(), endpointList);
-
-            host.Description.Behaviors.Add(new RoutingBehavior(rc));
+            ServiceHost host = new ServiceHost(typeof(RoutingService), new Uri[] {});
             host.Description.Behaviors.Add(new MyBehavior(this));
+ 
             host.Open();
             _RouterHost = host; 
         }
@@ -73,7 +60,6 @@ namespace WpfApplication2
             container.MessageText = message.ToString();
             container.Received = DateTime.Now;
             container.IsIncoming = (direction == MessageDirection.Incoming);
-
            
             Action<MessageContainer> msg = new Action<MessageContainer>(Messages.Add);
             this.Dispatcher.Invoke(msg, container);
